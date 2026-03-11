@@ -242,6 +242,26 @@ UTF-16LE bytes for the ``NVARCHAR`` column — no manual wrapping needed.
             auto_encode=True
         )
 
+**Pre-computed codecs for repeated inserts:**
+
+.. versionadded:: 2.2.0
+
+When calling ``bulk_insert`` repeatedly for the same table (e.g. in
+batches), ``auto_encode=True`` queries ``INFORMATION_SCHEMA.COLUMNS``
+on every call. Use :py:meth:`~k_ctds.Connection.column_codecs` to
+query the metadata once and reuse it:
+
+.. code-block:: python
+
+    with k_ctds.connect('host') as connection:
+        codecs = connection.column_codecs('dbo.LargeImportTable')
+        for chunk in chunks:
+            connection.bulk_insert(
+                'dbo.LargeImportTable',
+                chunk,
+                auto_encode=codecs
+            )
+
 .. note::
 
     ``auto_encode`` does not support temporary tables (e.g.

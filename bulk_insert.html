@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bulk Insert &mdash; k-ctds 2.1.1 documentation</title>
+  <title>Bulk Insert &mdash; k-ctds 2.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=841abef3"></script>
+      <script src="_static/documentation_options.js?v=b21de401"></script>
       <script src="_static/doctools.js?v=9a2dae69"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -309,6 +309,24 @@ UTF-16LE bytes for the <code class="docutils literal notranslate"><span class="p
         <span class="n">tablock</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
         <span class="n">auto_encode</span><span class="o">=</span><span class="kc">True</span>
     <span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Pre-computed codecs for repeated inserts:</strong></p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 2.2.0.</span></p>
+</div>
+<p>When calling <code class="docutils literal notranslate"><span class="pre">bulk_insert</span></code> repeatedly for the same table (e.g. in
+batches), <code class="docutils literal notranslate"><span class="pre">auto_encode=True</span></code> queries <code class="docutils literal notranslate"><span class="pre">INFORMATION_SCHEMA.COLUMNS</span></code>
+on every call. Use <a class="reference internal" href="connection.html#k_ctds.Connection.column_codecs" title="k_ctds.Connection.column_codecs"><code class="xref py py-meth docutils literal notranslate"><span class="pre">column_codecs()</span></code></a> to
+query the metadata once and reuse it:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">k_ctds</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;host&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="n">codecs</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">column_codecs</span><span class="p">(</span><span class="s1">&#39;dbo.LargeImportTable&#39;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">bulk_insert</span><span class="p">(</span>
+            <span class="s1">&#39;dbo.LargeImportTable&#39;</span><span class="p">,</span>
+            <span class="n">chunk</span><span class="p">,</span>
+            <span class="n">auto_encode</span><span class="o">=</span><span class="n">codecs</span>
+        <span class="p">)</span>
 </pre></div>
 </div>
 <div class="admonition note">

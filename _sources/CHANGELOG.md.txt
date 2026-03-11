@@ -4,6 +4,16 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## v2.2.0
+
+### Added
+- `Connection.column_codecs(table)` method that pre-computes column encoding
+  metadata for a table. The result can be passed to `bulk_insert` via the
+  `auto_encode` parameter to avoid repeated `INFORMATION_SCHEMA` queries when
+  inserting multiple batches into the same table.
+- `bulk_insert` `auto_encode` parameter now accepts pre-computed codecs from
+  `column_codecs()` in addition to `True`/`False`.
+
 ## v2.1.1
 
 ### Fixed
@@ -341,7 +351,8 @@ _NVARCHAR_ arguments to remote procedure calls.
 ## [1.0.0] - 2016-03-14
 Initial Release
 
-[Unreleased]: https://github.com/koddachad/ctds_k/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/koddachad/k_ctds/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/koddachad/k_ctds/compare/v2.1.1...v2.2.0
 [2.1.0]: https://github.com/koddachad/k_ctds/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/koddachad/k_ctds/compare/v1.15.0...v2.0.0
 [1.15.0]: https://github.com/koddachad/ctds_k/compare/v1.14.0..v1.15.0

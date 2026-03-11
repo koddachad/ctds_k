@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connection &mdash; k-ctds 2.1.1 documentation</title>
+  <title>Connection &mdash; k-ctds 2.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=841abef3"></script>
+      <script src="_static/documentation_options.js?v=b21de401"></script>
       <script src="_static/doctools.js?v=9a2dae69"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -63,6 +63,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.autocommit"><code class="docutils literal notranslate"><span class="pre">Connection.autocommit</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.bulk_insert"><code class="docutils literal notranslate"><span class="pre">Connection.bulk_insert()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.close"><code class="docutils literal notranslate"><span class="pre">Connection.close()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.column_codecs"><code class="docutils literal notranslate"><span class="pre">Connection.column_codecs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.commit"><code class="docutils literal notranslate"><span class="pre">Connection.commit()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.cursor"><code class="docutils literal notranslate"><span class="pre">Connection.cursor()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#k_ctds.Connection.database"><code class="docutils literal notranslate"><span class="pre">Connection.database</span></code></a></li>
@@ -199,10 +200,13 @@ Version 1.9 supports passing rows as <a class="reference external" href="https:/
 to column names and must exist for all non-NULL columns.</p></li>
 <li><p><strong>batch_size</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – An optional batch size.</p></li>
 <li><p><strong>tablock</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Should the <cite>TABLOCK</cite> hint be passed?</p></li>
-<li><p><strong>auto_encode</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Should Python <cite>str</cite> values be automatically
-encoded based on the target column’s collation? When True,
+<li><p><strong>auto_encode</strong> – Controls automatic encoding of Python <cite>str</cite> values
+based on the target column’s collation. When <cite>True</cite>,
 column metadata is queried from INFORMATION_SCHEMA.COLUMNS before
-the insert begins. str values destined for NVARCHAR/NCHAR/NTEXT
+the insert begins. Alternatively, pass a pre-computed codecs object
+from <a class="reference internal" href="#k_ctds.Connection.column_codecs" title="k_ctds.Connection.column_codecs"><code class="xref py py-meth docutils literal notranslate"><span class="pre">column_codecs()</span></code></a> to skip the metadata query on each
+call. This is useful when calling bulk_insert repeatedly for the
+same table. str values destined for NVARCHAR/NCHAR/NTEXT
 columns are encoded to UTF-16LE. str values destined for
 VARCHAR/CHAR/TEXT columns are encoded to the column’s collation
 code page. .. versionadded:: 2.0.0</p></li>
@@ -224,6 +228,35 @@ code page. .. versionadded:: 2.0.0</p></li>
 Subsequent calls to this object or any <a class="reference internal" href="cursor.html#k_ctds.Cursor" title="k_ctds.Cursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">k_ctds.Cursor</span></code></a> objects it
 created will raise <a class="reference internal" href="ctds.html#k_ctds.InterfaceError" title="k_ctds.InterfaceError"><code class="xref py py-exc docutils literal notranslate"><span class="pre">k_ctds.InterfaceError</span></code></a>.</p>
 <p><span class="target" id="index-1"></span><a class="pep reference external" href="https://peps.python.org/pep-0249/#Connection.close"><strong>PEP 0249#Connection.close</strong></a></p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="k_ctds.Connection.column_codecs">
+<span class="sig-name descname"><span class="pre">column_codecs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#k_ctds.Connection.column_codecs" title="Link to this definition"></a></dt>
+<dd><p>Query column encoding information for a table.</p>
+<p>Returns a pre-computed codecs object that can be passed to
+<a class="reference internal" href="#k_ctds.Connection.bulk_insert" title="k_ctds.Connection.bulk_insert"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bulk_insert()</span></code></a> via the <cite>auto_encode</cite> parameter to avoid
+repeated INFORMATION_SCHEMA queries when inserting multiple batches
+into the same table.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">codecs</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">column_codecs</span><span class="p">(</span><span class="s1">&#39;dbo.MyTable&#39;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
+    <span class="n">connection</span><span class="o">.</span><span class="n">bulk_insert</span><span class="p">(</span><span class="s1">&#39;dbo.MyTable&#39;</span><span class="p">,</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">auto_encode</span><span class="o">=</span><span class="n">codecs</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>table</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – The table name (may be schema- or catalog-qualified).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A codecs object for use with <a class="reference internal" href="#k_ctds.Connection.bulk_insert" title="k_ctds.Connection.bulk_insert"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bulk_insert()</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the table does not exist or is inaccessible.</p>
+</dd>
+</dl>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 2.0.0.</span></p>
+</div>
 </dd></dl>
 
 <dl class="py method">
