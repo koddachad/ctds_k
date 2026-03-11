@@ -33,10 +33,13 @@ after `batch_size` rows have been copied to server.
 :type rows: :ref:`typeiter <python:typeiter>`
 :param int batch_size: An optional batch size.
 :param bool tablock: Should the `TABLOCK` hint be passed?
-:param bool auto_encode: Should Python `str` values be automatically
-    encoded based on the target column's collation? When True,
+:param auto_encode: Controls automatic encoding of Python `str` values
+    based on the target column's collation. When `True`,
     column metadata is queried from INFORMATION_SCHEMA.COLUMNS before
-    the insert begins. str values destined for NVARCHAR/NCHAR/NTEXT
+    the insert begins. Alternatively, pass a pre-computed codecs object
+    from :py:meth:`column_codecs` to skip the metadata query on each
+    call. This is useful when calling bulk_insert repeatedly for the
+    same table. str values destined for NVARCHAR/NCHAR/NTEXT
     columns are encoded to UTF-16LE. str values destined for
     VARCHAR/CHAR/TEXT columns are encoded to the column's collation
     code page. .. versionadded:: 2.0.0

@@ -455,6 +455,136 @@ class TestBulkInsertAutoEncode(TestExternalDatabase):
             finally:
                 connection.rollback()
 
+    def test_precomputed_codecs(self):
+        """column_codecs() result can be passed to bulk_insert auto_encode."""
+        with self.connect(autocommit=False) as connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        '''
+                        CREATE TABLE {0}
+                        (
+                            Id      INT NOT NULL PRIMARY KEY,
+                            Name    NVARCHAR(100),
+                            Code    VARCHAR(50) COLLATE SQL_Latin1_General_CP1_CI_AS
+                        )
+                        '''.format(self.test_precomputed_codecs.__name__)
+                    )
+
+                codecs = connection.column_codecs(self.test_precomputed_codecs.__name__)
+
+                name = unicode_(b'\xe3\x83\x9b', encoding='utf-8')
+                code = unicode_(b'caf\xc3\xa9', encoding='utf-8')
+                inserted = connection.bulk_insert(
+                    self.test_precomputed_codecs.__name__,
+                    [(1, name, code)],
+                    auto_encode=codecs
+                )
+                self.assertEqual(inserted, 1)
+
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'SELECT * FROM {0}'.format(
+                            self.test_precomputed_codecs.__name__
+                        )
+                    )
+                    rows = [tuple(row) for row in cursor.fetchall()]
+                    self.assertEqual(rows, [(1, name, code)])
+
+            finally:
+                connection.rollback()
+
+    def test_precomputed_codecs_multiple_batches(self):
+        """Same column_codecs() result reused across multiple bulk_insert calls."""
+        with self.connect(autocommit=False) as connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        '''
+                        CREATE TABLE {0}
+                        (
+                            Id      INT NOT NULL PRIMARY KEY,
+                            Name    NVARCHAR(100)
+                        )
+                        '''.format(self.test_precomputed_codecs_multiple_batches.__name__)
+                    )
+
+                codecs = connection.column_codecs(
+                    self.test_precomputed_codecs_multiple_batches.__name__
+                )
+
+                total = 0
+                for batch in range(3):
+                    start = batch * 10
+                    inserted = connection.bulk_insert(
+                        self.test_precomputed_codecs_multiple_batches.__name__,
+                        [
+                            (start + i, 'name {}'.format(start + i))
+                            for i in range(10)
+                        ],
+                        auto_encode=codecs
+                    )
+                    total += inserted
+
+                self.assertEqual(total, 30)
+
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'SELECT COUNT(1) FROM {0}'.format(
+                            self.test_precomputed_codecs_multiple_batches.__name__
+                        )
+                    )
+                    self.assertEqual(cursor.fetchone()[0], 30)
+
+            finally:
+                connection.rollback()
+
+    def test_column_codecs_nonexistent_table(self):
+        """column_codecs() raises ValueError for a table that doesn't exist."""
+        with self.connect(autocommit=False) as connection:
+            with self.assertRaises(ValueError) as ctx:
+                connection.column_codecs('this_table_does_not_exist_at_all')
+            self.assertIn('this_table_does_not_exist_at_all', str(ctx.exception))
+
+    def test_precomputed_codecs_schema_qualified(self):
+        """column_codecs() works with schema-qualified table names."""
+        with self.connect(autocommit=False) as connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        '''
+                        CREATE TABLE dbo.{0}
+                        (
+                            Id      INT NOT NULL PRIMARY KEY,
+                            Name    NVARCHAR(100)
+                        )
+                        '''.format(self.test_precomputed_codecs_schema_qualified.__name__)
+                    )
+
+                codecs = connection.column_codecs(
+                    'dbo.{}'.format(self.test_precomputed_codecs_schema_qualified.__name__)
+                )
+
+                value = unicode_(b'\xe3\x83\x9b', encoding='utf-8')
+                inserted = connection.bulk_insert(
+                    'dbo.{}'.format(self.test_precomputed_codecs_schema_qualified.__name__),
+                    [(1, value)],
+                    auto_encode=codecs
+                )
+                self.assertEqual(inserted, 1)
+
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'SELECT Name FROM dbo.{0}'.format(
+                            self.test_precomputed_codecs_schema_qualified.__name__
+                        )
+                    )
+                    rows = [tuple(row) for row in cursor.fetchall()]
+                    self.assertEqual(rows, [(value,)])
+
+            finally:
+                connection.rollback()
+
     def test_nvarchar_repeated_katakana(self):
         """
         Reproduce the exact pattern from existing tests: 100 repeated

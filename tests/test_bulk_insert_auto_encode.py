@@ -221,6 +221,56 @@ class TestGetColumnCodecsNoResults(unittest.TestCase):
         self.assertIn('INFORMATION_SCHEMA', str(ctx.exception))
 
 
+class TestPrecomputedCodecs(unittest.TestCase):
+    """Test that pre-computed codecs tuples work with _encode_rows."""
+
+    def test_precomputed_tuple_encodes_sequence_rows(self):
+        """A (by_position, by_name) tuple should encode rows identically to auto_encode=True."""
+        by_position = ['utf-16-le', None, 'cp1252']
+        by_name = {'Name': 'utf-16-le', 'Id': None, 'Code': 'cp1252'}
+        codecs = (by_position, by_name)
+
+        rows = [('hello', 42, 'world')]
+        result = list(_encode_rows(rows, codecs[0], codecs[1]))
+        self.assertEqual(len(result), 1)
+
+        row = result[0]
+        self.assertIsInstance(row[0], SqlVarChar)
+        self.assertEqual(row[0].value, 'hello'.encode('utf-16-le'))
+        self.assertEqual(row[1], 42)
+        self.assertIsInstance(row[2], SqlVarChar)
+        self.assertEqual(row[2].value, 'world'.encode('cp1252'))
+
+    def test_precomputed_tuple_encodes_dict_rows(self):
+        """Pre-computed codecs work with dict-based rows."""
+        by_position = []
+        by_name = {'Name': 'utf-16-le', 'Code': 'cp1252'}
+        codecs = (by_position, by_name)
+
+        rows = [{'Name': 'hello', 'Code': 'world'}]
+        result = list(_encode_rows(rows, codecs[0], codecs[1]))
+        row = result[0]
+        self.assertIsInstance(row['Name'], SqlVarChar)
+        self.assertEqual(row['Name'].value, 'hello'.encode('utf-16-le'))
+        self.assertIsInstance(row['Code'], SqlVarChar)
+        self.assertEqual(row['Code'].value, 'world'.encode('cp1252'))
+
+    def test_precomputed_codecs_reusable_across_batches(self):
+        """Same codecs object can be reused for multiple batches."""
+        by_position = ['cp1252']
+        by_name = {}
+        codecs = (by_position, by_name)
+
+        for batch_num in range(3):
+            rows = [('batch_{}'.format(batch_num),)]
+            result = list(_encode_rows(rows, codecs[0], codecs[1]))
+            self.assertIsInstance(result[0][0], SqlVarChar)
+            self.assertEqual(
+                result[0][0].value,
+                'batch_{}'.format(batch_num).encode('cp1252')
+            )
+
+
 class TestCodePageMapping(unittest.TestCase):
 
     def test_common_code_pages_present(self):

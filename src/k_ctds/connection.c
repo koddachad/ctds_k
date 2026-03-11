@@ -1428,10 +1428,13 @@ static const char s_Connection_bulk_insert_doc[] =
 
     ":param bool tablock: Should the `TABLOCK` hint be passed?\n"
 
-    ":param bool auto_encode: Should Python `str` values be automatically\n"
-    "    encoded based on the target column's collation? When True,\n"
+    ":param auto_encode: Controls automatic encoding of Python `str` values\n"
+    "    based on the target column's collation. When `True`,\n"
     "    column metadata is queried from INFORMATION_SCHEMA.COLUMNS before\n"
-    "    the insert begins. str values destined for NVARCHAR/NCHAR/NTEXT\n"
+    "    the insert begins. Alternatively, pass a pre-computed codecs object\n"
+    "    from :py:meth:`column_codecs` to skip the metadata query on each\n"
+    "    call. This is useful when calling bulk_insert repeatedly for the\n"
+    "    same table. str values destined for NVARCHAR/NCHAR/NTEXT\n"
     "    columns are encoded to UTF-16LE. str values destined for\n"
     "    VARCHAR/CHAR/TEXT columns are encoded to the column's collation\n"
     "    code page. .. versionadded:: 2.0.0\n"
@@ -1552,6 +1555,74 @@ static DBINT Connection_bulk_insert_sendrow(struct Connection* connection,
     return (PyErr_Occurred()) ? -1 : saved;
 }
 
+
+static const char s_Connection_column_codecs_doc[] =
+    "column_codecs(table)\n"
+    "\n"
+    "Query column encoding information for a table.\n"
+    "\n"
+    "Returns a pre-computed codecs object that can be passed to\n"
+    ":py:meth:`bulk_insert` via the `auto_encode` parameter to avoid\n"
+    "repeated INFORMATION_SCHEMA queries when inserting multiple batches\n"
+    "into the same table.\n"
+    "\n"
+    ".. code-block:: python\n"
+    "\n"
+    "    codecs = connection.column_codecs('dbo.MyTable')\n"
+    "    for chunk in chunks:\n"
+    "        connection.bulk_insert('dbo.MyTable', chunk, auto_encode=codecs)\n"
+    "\n"
+    ":param str table: The table name (may be schema- or catalog-qualified).\n"
+    ":return: A codecs object for use with :py:meth:`bulk_insert`.\n"
+    ":raises ValueError: If the table does not exist or is inaccessible.\n"
+    "\n"
+    ".. versionadded:: 2.0.0\n";
+
+static PyObject* Connection_column_codecs(PyObject* self, PyObject* args)
+{
+    char* table;
+    PyObject* module = NULL;
+    PyObject* get_codecs = NULL;
+    PyObject* table_str = NULL;
+    PyObject* result = NULL;
+
+    if (!PyArg_ParseTuple(args, "s", &table))
+    {
+        return NULL;
+    }
+
+    do
+    {
+        module = PyImport_ImportModule("k_ctds._bulk_insert");
+        if (!module)
+        {
+            break;
+        }
+
+        get_codecs = PyObject_GetAttrString(module, "_get_column_codecs");
+        if (!get_codecs)
+        {
+            break;
+        }
+
+        table_str = PyUnicode_FromString(table);
+        if (!table_str)
+        {
+            break;
+        }
+
+        result = PyObject_CallFunctionObjArgs(get_codecs, self, table_str, NULL);
+    }
+    while (0);
+
+    Py_XDECREF(table_str);
+    Py_XDECREF(get_codecs);
+    Py_XDECREF(module);
+
+    return result;
+}
+
+
 static PyObject* Connection_bulk_insert(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     struct Connection* connection = (struct Connection*)self;
@@ -1578,14 +1649,13 @@ static PyObject* Connection_bulk_insert(PyObject* self, PyObject* args, PyObject
 
     if (!PyArg_ParseTupleAndKeywords(args,
                                      kwargs,
-                                     "sO|OO!O!",
+                                     "sO|OO!O",
                                      s_kwlist,
                                      &table,
                                      &rows,
                                      &batch_size,
                                      &PyBool_Type,
                                      &tablock,
-                                     &PyBool_Type,
                                      &auto_encode))
     {
         return NULL;
@@ -1634,11 +1704,15 @@ static PyObject* Connection_bulk_insert(PyObject* self, PyObject* args, PyObject
     }
 
     /*
-        When auto_encode is True, call into the Python helper module to
-        query column metadata and wrap the row iterator with one that
+        When auto_encode is truthy, wrap the row iterator with one that
         encodes str values based on each column's collation.
+
+        auto_encode may be:
+        - True (bool): query INFORMATION_SCHEMA for column codecs, then encode.
+        - A pre-computed codecs tuple from column_codecs(): skip the query, just encode.
+        - False/falsy: no encoding.
     */
-    if (Py_True == auto_encode)
+    if (Py_True == auto_encode || PyTuple_Check(auto_encode))
     {
         PyObject* module = NULL;
         PyObject* get_codecs = NULL;
@@ -1657,27 +1731,45 @@ static PyObject* Connection_bulk_insert(PyObject* self, PyObject* args, PyObject
                 break;
             }
 
-            /* Get column codecs: (by_position, by_name) = _get_column_codecs(connection, table) */
-            get_codecs = PyObject_GetAttrString(module, "_get_column_codecs");
-            if (!get_codecs)
+            if (Py_True == auto_encode)
             {
-                break;
+                /* Query column codecs from INFORMATION_SCHEMA. */
+                get_codecs = PyObject_GetAttrString(module, "_get_column_codecs");
+                if (!get_codecs)
+                {
+                    break;
+                }
+
+                table_str = PyUnicode_FromString(table);
+                if (!table_str)
+                {
+                    break;
+                }
+
+                codec_tuple = PyObject_CallFunctionObjArgs(get_codecs, self, table_str, NULL);
+                if (!codec_tuple)
+                {
+                    break;
+                }
+
+                by_position = PyTuple_GetItem(codec_tuple, 0);
+                by_name = PyTuple_GetItem(codec_tuple, 1);
+            }
+            else
+            {
+                /* Pre-computed codecs tuple from column_codecs(). */
+                if (PyTuple_GET_SIZE(auto_encode) != 2)
+                {
+                    PyErr_SetString(PyExc_ValueError,
+                                    "auto_encode tuple must have exactly 2 elements "
+                                    "(by_position, by_name). Use column_codecs() to "
+                                    "generate the correct value.");
+                    break;
+                }
+                by_position = PyTuple_GET_ITEM(auto_encode, 0);
+                by_name = PyTuple_GET_ITEM(auto_encode, 1);
             }
 
-            table_str = PyUnicode_FromString(table);
-            if (!table_str)
-            {
-                break;
-            }
-
-            codec_tuple = PyObject_CallFunctionObjArgs(get_codecs, self, table_str, NULL);
-            if (!codec_tuple)
-            {
-                break;
-            }
-
-            by_position = PyTuple_GetItem(codec_tuple, 0);
-            by_name = PyTuple_GetItem(codec_tuple, 1);
             if (!by_position || !by_name)
             {
                 break;
@@ -2048,8 +2140,9 @@ static PyMethodDef Connection_methods[] = {
     { "cursor",      Connection_cursor,                   METH_NOARGS,                  s_Connection_cursor_doc },
 
     /* Non-DB API 2.0 methods. */
-    { "bulk_insert", (PyCFunction)Connection_bulk_insert, METH_VARARGS | METH_KEYWORDS, s_Connection_bulk_insert_doc },
-    { "use",         Connection_use,                      METH_VARARGS,                 s_Connection_use_doc },
+    { "bulk_insert",   (PyCFunction)Connection_bulk_insert, METH_VARARGS | METH_KEYWORDS, s_Connection_bulk_insert_doc },
+    { "column_codecs", Connection_column_codecs,             METH_VARARGS,                 s_Connection_column_codecs_doc },
+    { "use",           Connection_use,                       METH_VARARGS,                 s_Connection_use_doc },
     { "__enter__",   Connection___enter__,                METH_NOARGS,                  s_Connection___enter___doc },
     { "__exit__",    Connection___exit__,                 METH_VARARGS,                 s_Connection___exit___doc },
     { NULL,          NULL,                                0,                            NULL }

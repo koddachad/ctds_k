@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "k-ctds"
-version = "2.1.1"
+version = "2.2.0"
 description = "DB API 2.0-compliant driver for SQL Server"
 readme = "README.rst"
 license = {text = "MIT"}
